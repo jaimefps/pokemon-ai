@@ -11,8 +11,8 @@ const ASSISTANT_ID = secrets.ASSISTANT_ID
 const GPT_KEY = secrets.GPT_KEY
 
 // Increase max cycles for long running games.
-// 10 is just to get a taste of how it works:
-const MAX_CYCLES = 10
+// 100 is just to get a taste of how it works.
+const MAX_CYCLES = 100
 
 // globals:
 let cycles = 0
@@ -101,7 +101,7 @@ async function playGame() {
       // resume game and wait
       // for action to complete:
       await clickControl("Play")
-      await sleep(100)
+      await sleep(200)
       action()
       await sleep(3000)
     } else {
@@ -109,6 +109,7 @@ async function playGame() {
     }
   }
 
+  clickControl("Save State")
   console.log(`reached MAX_CYCLES: ${MAX_CYCLES}`)
 }
 
@@ -130,7 +131,7 @@ async function analyzeScreenshot() {
     file: fs.createReadStream(filePath),
     purpose: "vision",
   })
-  console.log("uploaded file:", JSON.stringify(file, null, 2))
+  console.log("uploaded file:", file.filename)
 
   await openai.beta.threads.messages.create(secrets.THREAD_ID, {
     role: "user",
@@ -204,7 +205,7 @@ async function sleep(ms) {
 
 async function press(key) {
   await page.keyboard.down(key)
-  await sleep(100)
+  await sleep(200)
   await page.keyboard.up(key)
 }
 
@@ -215,7 +216,7 @@ async function clickControl(txt) {
     throw new Error(`Failed to find button: ${txt}`)
   }
   await btn.click()
-  await sleep(100)
+  await sleep(200)
   // set focus on game:
   await clickCanvas()
 }
@@ -230,12 +231,11 @@ async function clickCanvas() {
         canvasBox.x + canvasBox.width / 2,
         canvasBox.y + canvasBox.height / 2
       )
-      console.log("Canvas clicked")
     } else {
-      console.error("Unable to retrieve canvas bounding box.")
+      console.error("unable to retrieve canvas bounding box")
     }
   } else {
-    console.error("Canvas not found!")
+    console.error("canvas not found")
   }
 }
 

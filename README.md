@@ -1,5 +1,7 @@
 # pokemon-ai
 
+![example of experiment running](./assets/sample.png)
+
 Small experiment with OpenAI vision analysis capabilities. The idea is to feed an OpenAI model with screenshots from a game that has a simple UX and limited series of actions that can be executed. The AI model is meant to infer or explore its location within the game and progress through it by seeing a screenshot of the current game state and responding with the next action it wishes to take.
 
 This is also an experiment of the idea of "explicit awareness", by requesting that the model explicitly state its short-term and long-term goals so that it creates some form of reinforcement and remain on task over time. This is achieved by forcing the model to only respond in a constrained manner:

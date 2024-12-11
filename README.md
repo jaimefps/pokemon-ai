@@ -44,4 +44,8 @@ Once the EmulatorJS process is running successfully, open a new terminal. In the
 
 ## assistant prompts
 
-The short-term goal for this mvp is to complete the opening sequence of the game, i.e., pick a starter pokemon. Previously the goal was to complete the game and defeat the Elite 4 trainers, but that is too open-ended for a brute-force project like this. For now our definition of success is to have the OpenAI assistant only complete the opening sequence. See some of the prompts I've tried using under the `prompts/` directory. I must admit that so far the assistant has only managed to leave the house and go to Prof Oak's building once. Every other time I've run this program, the assistant gets stuck in the main character's bedroom and finds a way out.
+The short-term goal for this mvp is to complete the opening sequence of the game, i.e., pick a starter pokemon. Previously the goal was to complete the game and defeat the Elite 4 trainers, but that is too open-ended for a brute-force project like this. For now our definition of success is to have the OpenAI assistant only complete the opening sequence. See some of the prompts I've tried using under the `prompts/` directory.
+
+For now, I've found that I need to share a lot of "tips" within the prompt to help the assistant navigate the game; e.g., telling it how to use and trigger the stairs to move between rooms, or what macro actions are needed to progress through the starting sequence of the game. Otherwise the assistant moves back and forth without much progress.
+
+Even with so much support, it fails to pick a starter pokemon once Prof Oak's cut-scene if finished. And just remains stuck between the characters without ever selecting a pokemon.

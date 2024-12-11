@@ -5,7 +5,7 @@ const path = require("path")
 const fs = require("fs")
 
 const SCREEN_CAP_LIMIT = 10
-const SCREEN_DIR = path.join(__dirname, "./game-screen")
+const SCREEN_DIR = path.join(__dirname, "./screenshots")
 const EMULATOR_URL = "http://127.0.0.1:8080/"
 const ASSISTANT_ID = secrets.ASSISTANT_ID
 const GPT_KEY = secrets.GPT_KEY
@@ -28,7 +28,7 @@ async function main() {
     await initEmulator()
     await playGame()
   } catch (error) {
-    console.error("An error occurred:", error)
+    console.error("Process failed:", error)
   } finally {
     if (browser) await browser.close()
     console.log("Browser closed.")
@@ -54,24 +54,19 @@ async function initEmulator() {
   await fileInput.uploadFile(romPath)
   console.log(`uploaded "${romPath}"`)
 
-  // wait for the game to load
+  // wait for emulator
+  // to load the game rom:
   await sleep(5000)
 
   // todo: automate rom.state upload.
   // manually upload rom.state file.
   console.log("load rom.state manually!")
-
   await sleep(5000)
-  console.log("GPT will start in 5s")
-  await sleep(1000)
-  console.log("GPT will start in 4s")
-  await sleep(1000)
-  console.log("GPT will start in 3s")
-  await sleep(1000)
-  console.log("GPT will start in 2s")
-  await sleep(1000)
-  console.log("GPT will start in 1s")
-  await sleep(1000)
+
+  for (let i = 0; i < 5; i++) {
+    console.log(`GPT will start in ${5 - i}s`)
+    await sleep(1000)
+  }
 }
 
 async function playGame() {
@@ -105,7 +100,7 @@ async function playGame() {
       action()
       await sleep(3000)
     } else {
-      console.error("failed to call action")
+      throw new Error("failed to call action")
     }
   }
 
@@ -212,9 +207,8 @@ async function press(key) {
 async function clickControl(txt) {
   const selector = `xpath/.//button[descendant::text()[contains(., '${txt}')]]`
   const [btn] = await page.$$(selector)
-  if (!btn) {
-    throw new Error(`Failed to find button: ${txt}`)
-  }
+  if (!btn) throw new Error(`Failed to find button: ${txt}`)
+
   await btn.click()
   await sleep(200)
   // set focus on game:
@@ -232,10 +226,10 @@ async function clickCanvas() {
         canvasBox.y + canvasBox.height / 2
       )
     } else {
-      console.error("unable to retrieve canvas bounding box")
+      throw new Error("unable to retrieve canvas bounding box")
     }
   } else {
-    console.error("canvas not found")
+    throw new Error("canvas not found")
   }
 }
 

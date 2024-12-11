@@ -104,7 +104,6 @@ async function playGame() {
     }
   }
 
-  clickControl("Save State")
   console.log(`reached MAX_CYCLES: ${MAX_CYCLES}`)
 }
 

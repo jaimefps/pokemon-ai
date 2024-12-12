@@ -46,6 +46,8 @@ Once the EmulatorJS process is running successfully, open a new terminal. In the
 
 The short-term goal for this mvp is to complete the opening sequence of the game, i.e., pick a starter pokemon. Previously the goal was to complete the game and defeat the Elite 4 trainers, but that is too open-ended for a brute-force project like this. For now our definition of success is to have the OpenAI assistant only complete the opening sequence. See some of the prompts I've tried using under the `prompts/` directory.
 
-For now, I've found that I need to share a lot of "tips" within the prompt to help the assistant navigate the game; e.g., telling it how to use and trigger the stairs to move between rooms, or what macro actions are needed to progress through the starting sequence of the game. Otherwise the assistant moves back and forth without much progress.
+## fine-tuning options
 
-Even with so much support, it fails to pick a starter pokemon once Prof Oak's cut-scene if finished. And just remains stuck between the characters without ever selecting a pokemon.
+1. `jsonl` dataset with base64 enconded screenshots.
+2. `jsonl` dataset with ASCII translations of the map: each type of tile has its corresponding label. 
+3. OpenAI Gym Retro training: https://openai.com/index/gym-retro/

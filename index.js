@@ -5,14 +5,14 @@ const path = require("path")
 const fs = require("fs")
 
 const SCREEN_CAP_LIMIT = 10
-const SCREEN_DIR = path.join(__dirname, "./game-screen")
+const SCREEN_DIR = path.join(__dirname, "./screenshots")
 const EMULATOR_URL = "http://127.0.0.1:8080/"
 const ASSISTANT_ID = secrets.ASSISTANT_ID
 const GPT_KEY = secrets.GPT_KEY
 
 // Increase max cycles for long running games.
-// 10 is just to get a taste of how it works:
-const MAX_CYCLES = 10
+// 100 is just to get a taste of how it works.
+const MAX_CYCLES = 100
 
 // globals:
 let cycles = 0
@@ -28,7 +28,7 @@ async function main() {
     await initEmulator()
     await playGame()
   } catch (error) {
-    console.error("An error occurred:", error)
+    console.error("Process failed:", error)
   } finally {
     if (browser) await browser.close()
     console.log("Browser closed.")
@@ -54,24 +54,19 @@ async function initEmulator() {
   await fileInput.uploadFile(romPath)
   console.log(`uploaded "${romPath}"`)
 
-  // wait for the game to load
+  // wait for emulator
+  // to load the game rom:
   await sleep(5000)
 
   // todo: automate rom.state upload.
   // manually upload rom.state file.
   console.log("load rom.state manually!")
-
   await sleep(5000)
-  console.log("GPT will start in 5s")
-  await sleep(1000)
-  console.log("GPT will start in 4s")
-  await sleep(1000)
-  console.log("GPT will start in 3s")
-  await sleep(1000)
-  console.log("GPT will start in 2s")
-  await sleep(1000)
-  console.log("GPT will start in 1s")
-  await sleep(1000)
+
+  for (let i = 0; i < 5; i++) {
+    console.log(`GPT will start in ${5 - i}s`)
+    await sleep(1000)
+  }
 }
 
 async function playGame() {
@@ -101,11 +96,11 @@ async function playGame() {
       // resume game and wait
       // for action to complete:
       await clickControl("Play")
-      await sleep(100)
+      await sleep(200)
       action()
       await sleep(3000)
     } else {
-      console.error("failed to call action")
+      throw new Error("failed to call action")
     }
   }
 
@@ -130,7 +125,7 @@ async function analyzeScreenshot() {
     file: fs.createReadStream(filePath),
     purpose: "vision",
   })
-  console.log("uploaded file:", JSON.stringify(file, null, 2))
+  console.log("uploaded file:", file.filename)
 
   await openai.beta.threads.messages.create(secrets.THREAD_ID, {
     role: "user",
@@ -204,18 +199,17 @@ async function sleep(ms) {
 
 async function press(key) {
   await page.keyboard.down(key)
-  await sleep(100)
+  await sleep(200)
   await page.keyboard.up(key)
 }
 
 async function clickControl(txt) {
   const selector = `xpath/.//button[descendant::text()[contains(., '${txt}')]]`
   const [btn] = await page.$$(selector)
-  if (!btn) {
-    throw new Error(`Failed to find button: ${txt}`)
-  }
+  if (!btn) throw new Error(`Failed to find button: ${txt}`)
+
   await btn.click()
-  await sleep(100)
+  await sleep(200)
   // set focus on game:
   await clickCanvas()
 }
@@ -230,12 +224,11 @@ async function clickCanvas() {
         canvasBox.x + canvasBox.width / 2,
         canvasBox.y + canvasBox.height / 2
       )
-      console.log("Canvas clicked")
     } else {
-      console.error("Unable to retrieve canvas bounding box.")
+      throw new Error("unable to retrieve canvas bounding box")
     }
   } else {
-    console.error("Canvas not found!")
+    throw new Error("canvas not found")
   }
 }
 

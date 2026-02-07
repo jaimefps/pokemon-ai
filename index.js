@@ -53,19 +53,32 @@ async function initEmulator() {
   await fileInput.uploadFile(romPath)
   console.log(`uploaded "${romPath}"`)
 
-  // wait for emulator
-  // to load the game rom:
-  await sleep(15000)
+  // wait for emulator to load the game rom:
+  console.log("waiting for emulator to initialize...")
+  await page.waitForFunction(
+    () => window.EJS_emulator && window.EJS_emulator.gameManager,
+    { timeout: 30000 }
+  )
+  console.log("emulator ready.")
 
-  // todo: automate rom.state upload.
-  // manually upload rom.state file.
-  console.log("load rom.state manually!")
-  await sleep(5000)
-
-  for (let i = 0; i < 5; i++) {
-    console.log(`GPT will start in ${5 - i}s`)
-    await sleep(1000)
+  // load save state if available:
+  const statePath = path.join(__dirname, "local", "rom.state")
+  if (fs.existsSync(statePath)) {
+    const stateBase64 = fs.readFileSync(statePath).toString("base64")
+    await page.evaluate((b64) => {
+      const binary = atob(b64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      window.EJS_emulator.gameManager.loadState(bytes)
+    }, stateBase64)
+    console.log("loaded save state from rom.state")
+  } else {
+    console.log("no rom.state found, starting from scratch.")
   }
+
+  await sleep(2000)
 }
 
 async function playGame() {

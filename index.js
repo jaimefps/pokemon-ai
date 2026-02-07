@@ -57,7 +57,7 @@ async function initEmulator() {
   console.log("waiting for emulator to initialize...")
   await page.waitForFunction(
     () => window.EJS_emulator && window.EJS_emulator.gameManager,
-    { timeout: 30000 }
+    { timeout: 30000 },
   )
   console.log("emulator ready.")
 
@@ -88,6 +88,8 @@ async function playGame() {
     console.log(`created screenshots directory: ${SCREEN_DIR}`)
   }
 
+  let lastResult = null
+
   while (cycles < MAX_CYCLES) {
     cycles += 1
     console.log(`--------- action #${cycles} ---------`)
@@ -99,16 +101,16 @@ async function playGame() {
     clearScreenshots()
 
     // analyze screenshot:
-    const result = await analyzeScreenshot()
-    console.log("result:", JSON.stringify(result, null, 2))
+    lastResult = await analyzeScreenshot()
+    console.log("result:", JSON.stringify(lastResult, null, 2))
 
     // execute action:
-    const action = actions[result.action]
+    const action = actions[lastResult.action]
     if (action) {
       // resume game and wait
       // for action to complete:
       await clickControl("Play")
-      await sleep(200)
+      await sleep(250)
       action()
       await sleep(3000)
     } else {
@@ -116,7 +118,39 @@ async function playGame() {
     }
   }
 
+  // save state and goals so next run continues from here:
+  await saveState()
+  saveGoals(lastResult)
   console.log(`reached MAX_CYCLES: ${MAX_CYCLES}`)
+}
+
+async function saveState() {
+  const statePath = path.join(__dirname, "local", "rom.state")
+  const stateBase64 = await page.evaluate(() => {
+    const state = window.EJS_emulator.gameManager.getState()
+    let binary = ""
+    for (let i = 0; i < state.length; i++) {
+      binary += String.fromCharCode(state[i])
+    }
+    return btoa(binary)
+  })
+  fs.writeFileSync(statePath, Buffer.from(stateBase64, "base64"))
+  console.log("saved state to rom.state")
+}
+
+function saveGoals(result) {
+  if (!result) return
+  const goalsPath = path.join(__dirname, "local", "goals.txt")
+  const lines = [
+    `Session ended: ${new Date().toISOString()}`,
+    `Cycle: ${cycles}`,
+    `Last action: ${result.action}`,
+    `Description: ${result.description}`,
+    `Short goal: ${result.short_goal}`,
+    `Long goal: ${result.long_goal}`,
+  ]
+  fs.writeFileSync(goalsPath, lines.join("\n") + "\n")
+  console.log("saved goals to goals.txt")
 }
 
 function lastScreenshot() {

@@ -8,7 +8,9 @@ class OpenAIProvider extends AIProvider {
   async init() {
     this.client = new OpenAI({ apiKey: this.config.apiKey })
     this.model = this.config.model || "gpt-5.2"
-    this.conversationHistory = []
+    this.conversationHistory = this.seedGoals("assistant", (role, content) => ({
+      role, content,
+    }))
   }
 
   async analyzeScreenshot(filePath) {

@@ -8,7 +8,9 @@ class GeminiProvider extends AIProvider {
   async init() {
     this.client = new GoogleGenAI({ apiKey: this.config.apiKey })
     this.model = this.config.model || "gemini-3-pro-preview"
-    this.conversationHistory = []
+    this.conversationHistory = this.seedGoals("model", (role, text) => ({
+      role, parts: [{ text }],
+    }))
   }
 
   async analyzeScreenshot(filePath) {

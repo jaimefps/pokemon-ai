@@ -2,13 +2,17 @@ const config = require("./local/secrets")
 const puppeteer = require("puppeteer")
 const path = require("path")
 const fs = require("fs")
+const { spawn } = require("child_process")
+const http = require("http")
 
 const Provider = require(`./providers/${config.PROVIDER}`)
 const provider = new Provider(config)
 
 const SCREEN_CAP_LIMIT = 10
 const SCREEN_DIR = path.join(__dirname, "./screenshots")
-const EMULATOR_URL = "http://127.0.0.1:8080/"
+const EMULATOR_PORT = 8080
+const EMULATOR_URL = `http://127.0.0.1:${EMULATOR_PORT}/`
+const EMULATOR_DIR = path.join(__dirname, "..", "EmulatorJS")
 
 // Increase max cycles for long running games.
 // 100 is just to get a taste of how it works.
@@ -18,11 +22,13 @@ const MAX_CYCLES = 100
 let cycles = 0
 let browser
 let page
+let serverProcess
 
 main()
 
 async function main() {
   try {
+    await startServer()
     await initAnalyzer()
     await initEmulator()
     await playGame()
@@ -31,6 +37,47 @@ async function main() {
   } finally {
     if (browser) await browser.close()
     console.log("Browser closed.")
+    stopServer()
+  }
+}
+
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const bin = path.join(__dirname, "node_modules", ".bin", "http-server")
+    serverProcess = spawn(bin, [EMULATOR_DIR, "-p", String(EMULATOR_PORT)], {
+      stdio: "ignore",
+    })
+
+    serverProcess.on("error", (err) => {
+      reject(new Error(`failed to start http-server: ${err.message}`))
+    })
+
+    // Poll until the server responds:
+    console.log("starting emulator server...")
+    const maxAttempts = 30
+    let attempts = 0
+    const interval = setInterval(() => {
+      attempts++
+      const req = http.get(EMULATOR_URL, () => {
+        clearInterval(interval)
+        console.log(`emulator server running at ${EMULATOR_URL}`)
+        resolve()
+      })
+      req.on("error", () => {
+        if (attempts >= maxAttempts) {
+          clearInterval(interval)
+          reject(new Error("emulator server failed to start"))
+        }
+      })
+      req.end()
+    }, 200)
+  })
+}
+
+function stopServer() {
+  if (serverProcess) {
+    serverProcess.kill()
+    console.log("emulator server stopped.")
   }
 }
 

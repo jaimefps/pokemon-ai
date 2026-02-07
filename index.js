@@ -1,14 +1,14 @@
-const secrets = require("./local/secrets")
+const config = require("./local/secrets")
 const puppeteer = require("puppeteer")
-const OpenAI = require("openai")
 const path = require("path")
 const fs = require("fs")
+
+const Provider = require(`./providers/${config.PROVIDER}`)
+const provider = new Provider(config)
 
 const SCREEN_CAP_LIMIT = 10
 const SCREEN_DIR = path.join(__dirname, "./screenshots")
 const EMULATOR_URL = "http://127.0.0.1:8080/"
-const ASSISTANT_ID = secrets.ASSISTANT_ID
-const GPT_KEY = secrets.GPT_KEY
 
 // Increase max cycles for long running games.
 // 100 is just to get a taste of how it works.
@@ -16,7 +16,6 @@ const MAX_CYCLES = 100
 
 // globals:
 let cycles = 0
-let openai
 let browser
 let page
 
@@ -36,7 +35,7 @@ async function main() {
 }
 
 async function initAnalyzer() {
-  openai = new OpenAI({ apiKey: GPT_KEY })
+  await provider.init()
 }
 
 async function initEmulator() {
@@ -56,7 +55,7 @@ async function initEmulator() {
 
   // wait for emulator
   // to load the game rom:
-  await sleep(5000)
+  await sleep(15000)
 
   // todo: automate rom.state upload.
   // manually upload rom.state file.
@@ -121,48 +120,7 @@ function lastScreenshot() {
 
 async function analyzeScreenshot() {
   const filePath = lastScreenshot()
-  const file = await openai.files.create({
-    file: fs.createReadStream(filePath),
-    purpose: "vision",
-  })
-  console.log("uploaded file:", file.filename)
-
-  await openai.beta.threads.messages.create(secrets.THREAD_ID, {
-    role: "user",
-    content: [
-      {
-        type: "image_file",
-        image_file: {
-          file_id: file.id,
-          detail: "auto",
-        },
-      },
-    ],
-  })
-
-  console.log("analyzing screenshot...")
-  const run = await openai.beta.threads.runs.createAndPoll(secrets.THREAD_ID, {
-    assistant_id: ASSISTANT_ID,
-  })
-
-  let result
-
-  if (run.status === "completed") {
-    const messages = await openai.beta.threads.messages.list(run.thread_id, {
-      order: "desc",
-      limit: 1,
-    })
-    try {
-      const raw = messages.data[0].content[0].text.value
-      result = JSON.parse(raw)
-    } catch (err) {
-      throw new Error(`failed to parse response: ${err}`)
-    }
-  } else {
-    throw new Error(`analysis failed with status: ${run.status}`)
-  }
-
-  return result
+  return await provider.analyzeScreenshot(filePath)
 }
 
 function clearScreenshots() {
@@ -222,7 +180,7 @@ async function clickCanvas() {
     if (canvasBox) {
       await page.mouse.click(
         canvasBox.x + canvasBox.width / 2,
-        canvasBox.y + canvasBox.height / 2
+        canvasBox.y + canvasBox.height / 2,
       )
     } else {
       throw new Error("unable to retrieve canvas bounding box")

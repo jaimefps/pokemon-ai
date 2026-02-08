@@ -26,7 +26,8 @@ The AI is constrained to respond with exactly this JSON structure:
   "what_changed":  "what changed since the last screenshot",
   "screen_type":   "overworld, battle, menu, dialogue, or cutscene",
   "description":   "what the AI sees on screen",
-  "surroundings":  "environment and adjacent tiles (overworld only)",
+  "location":      "named location + recalled layout knowledge (overworld only)",
+  "surroundings":  "what is adjacent in each direction (overworld only)",
   "short_goal":    "the AI's immediate objective",
   "medium_goal":   "the AI's near-future objective",
   "long_goal":     "the AI's broader objective",
@@ -34,7 +35,7 @@ The AI is constrained to respond with exactly this JSON structure:
 }
 ```
 
-The goal fields (`short_goal`, `medium_goal`, `long_goal`) are an experiment in "explicit awareness" — by forcing the model to articulate its goals at multiple horizons each turn, it creates a form of reinforcement that helps it stay on task over time.
+The `location` field bridges vision and knowledge — it forces the model to identify *where* it is in the game world, then recall what it knows about that location's layout from training data, before deciding which direction to move. The goal fields (`short_goal`, `medium_goal`, `long_goal`) are an experiment in "explicit awareness" — by forcing the model to articulate its goals at multiple horizons each turn, it creates a form of reinforcement that helps it stay on task over time.
 
 ### provider architecture
 

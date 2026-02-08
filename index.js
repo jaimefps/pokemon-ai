@@ -205,6 +205,7 @@ function saveGoals(result) {
     `Last action: ${result.action}`,
     `Description: ${result.description}`,
     `Short goal: ${result.short_goal}`,
+    `Medium goal: ${result.medium_goal}`,
     `Long goal: ${result.long_goal}`,
   ]
   fs.writeFileSync(goalsPath, lines.join("\n") + "\n")

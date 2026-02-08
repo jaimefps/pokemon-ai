@@ -24,7 +24,7 @@ class AIProvider {
 
   seedGoals(assistantRole, formatMessage) {
     if (!this.previousGoals) return []
-    const resumeResponse = '{"description":"Resuming from saved state.","ascii_grid":"","short_goal":"Orient from saved state.","long_goal":"Continue game progress.","action":"unknown"}'
+    const resumeResponse = '{"what_changed":"first turn","screen_type":"overworld","description":"Resuming from saved state.","location":"N/A","surroundings":"N/A","short_goal":"Orient from saved state.","medium_goal":"Determine current game progress.","long_goal":"Become the Pokemon Champion.","action":"unknown"}'
     return [
       formatMessage("user", this.previousGoals),
       formatMessage(assistantRole, resumeResponse),

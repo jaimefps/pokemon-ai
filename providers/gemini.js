@@ -2,8 +2,6 @@ const fs = require("fs")
 const { GoogleGenAI } = require("@google/genai")
 const AIProvider = require("./base")
 
-const MAX_HISTORY = 20
-
 class GeminiProvider extends AIProvider {
   async init() {
     this.client = new GoogleGenAI({ apiKey: this.config.apiKey })
@@ -16,29 +14,22 @@ class GeminiProvider extends AIProvider {
   async analyzeScreenshot(filePath) {
     const imageData = fs.readFileSync(filePath).toString("base64")
 
-    const userMessage = {
+    this.conversationHistory.push({
       role: "user",
-      parts: [
-        {
-          inlineData: {
-            mimeType: "image/png",
-            data: imageData,
-          },
-        },
-      ],
-    }
-
-    this.conversationHistory.push(userMessage)
+      parts: [{ inlineData: { mimeType: "image/png", data: imageData } }],
+    })
 
     console.log("analyzing screenshot...")
-    const response = await this.client.models.generateContent({
-      model: this.model,
-      contents: this.conversationHistory,
-      config: {
-        systemInstruction: this.systemPrompt,
-        maxOutputTokens: 4096,
-      },
-    })
+    const response = await this.withTimeout(
+      this.client.models.generateContent({
+        model: this.model,
+        contents: this.conversationHistory,
+        config: {
+          systemInstruction: this.systemPrompt,
+          maxOutputTokens: 4096,
+        },
+      })
+    )
 
     const raw = response.text
 
@@ -47,18 +38,12 @@ class GeminiProvider extends AIProvider {
       parts: [{ text: raw }],
     })
 
-    // Trim history to avoid unbounded growth
-    if (this.conversationHistory.length > MAX_HISTORY * 2) {
-      this.conversationHistory = this.conversationHistory.slice(-MAX_HISTORY * 2)
-    }
+    this.trimHistory()
+    this.stripOldImages(msg => {
+      msg.parts = [{ text: "(screenshot omitted)" }]
+    })
 
-    try {
-      // Gemini often wraps JSON in markdown code fences
-      const cleaned = raw.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "")
-      return JSON.parse(cleaned)
-    } catch (err) {
-      throw new Error(`failed to parse response: ${err}`)
-    }
+    return this.parseJSON(raw)
   }
 }
 

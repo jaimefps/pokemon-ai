@@ -1,11 +1,15 @@
 const fs = require("fs")
 const path = require("path")
 
+const MAX_HISTORY = 8
+const API_TIMEOUT = 30000
+const IMAGES_TO_KEEP = 3
+
 class AIProvider {
   constructor(config) {
     this.config = config
     this.systemPrompt = fs.readFileSync(
-      path.join(__dirname, "..", "prompts", "v6.txt"),
+      path.join(__dirname, "..", "prompts", "v8.txt"),
       "utf-8"
     )
 
@@ -25,6 +29,42 @@ class AIProvider {
       formatMessage("user", this.previousGoals),
       formatMessage(assistantRole, resumeResponse),
     ]
+  }
+
+  withTimeout(promise) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("API call timed out")), API_TIMEOUT)
+      ),
+    ])
+  }
+
+  trimHistory() {
+    if (this.conversationHistory.length > MAX_HISTORY * 2) {
+      this.conversationHistory = this.conversationHistory.slice(-MAX_HISTORY * 2)
+    }
+  }
+
+  stripOldImages(replaceParts) {
+    let imageCount = 0
+    for (let i = this.conversationHistory.length - 1; i >= 0; i--) {
+      const msg = this.conversationHistory[i]
+      if (msg.role !== "user") continue
+      imageCount++
+      if (imageCount > IMAGES_TO_KEEP) {
+        replaceParts(msg)
+      }
+    }
+  }
+
+  parseJSON(raw) {
+    const cleaned = raw.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "")
+    try {
+      return JSON.parse(cleaned)
+    } catch (err) {
+      throw new Error(`failed to parse response: ${err}`)
+    }
   }
 
   async init() {

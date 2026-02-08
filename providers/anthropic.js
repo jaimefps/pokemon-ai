@@ -2,8 +2,6 @@ const fs = require("fs")
 const Anthropic = require("@anthropic-ai/sdk")
 const AIProvider = require("./base")
 
-const MAX_HISTORY = 20
-
 class AnthropicProvider extends AIProvider {
   async init() {
     this.client = new Anthropic({ apiKey: this.config.apiKey })
@@ -15,31 +13,24 @@ class AnthropicProvider extends AIProvider {
 
   async analyzeScreenshot(filePath) {
     const imageData = fs.readFileSync(filePath).toString("base64")
-    const mediaType = "image/png"
 
-    const userMessage = {
+    this.conversationHistory.push({
       role: "user",
-      content: [
-        {
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: mediaType,
-            data: imageData,
-          },
-        },
-      ],
-    }
-
-    this.conversationHistory.push(userMessage)
+      content: [{
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: imageData },
+      }],
+    })
 
     console.log("analyzing screenshot...")
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 1024,
-      system: this.systemPrompt,
-      messages: this.conversationHistory,
-    })
+    const response = await this.withTimeout(
+      this.client.messages.create({
+        model: this.model,
+        max_tokens: 1024,
+        system: this.systemPrompt,
+        messages: this.conversationHistory,
+      })
+    )
 
     const raw = response.content[0].text
 
@@ -48,16 +39,12 @@ class AnthropicProvider extends AIProvider {
       content: raw,
     })
 
-    // Trim history to avoid unbounded growth
-    if (this.conversationHistory.length > MAX_HISTORY * 2) {
-      this.conversationHistory = this.conversationHistory.slice(-MAX_HISTORY * 2)
-    }
+    this.trimHistory()
+    this.stripOldImages(msg => {
+      msg.content = [{ type: "text", text: "(screenshot omitted)" }]
+    })
 
-    try {
-      return JSON.parse(raw)
-    } catch (err) {
-      throw new Error(`failed to parse response: ${err}`)
-    }
+    return this.parseJSON(raw)
   }
 }
 

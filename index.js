@@ -144,25 +144,36 @@ async function playGame() {
     // capture screenshot:
     await clickControl("Pause")
     const screenPath = path.join(SCREEN_DIR, `${Date.now()}.png`)
-    await page.screenshot({ path: screenPath })
+    const canvas = await page.$("canvas")
+    await canvas.screenshot({ path: screenPath })
     clearScreenshots()
 
     // analyze screenshot:
-    lastResult = await analyzeScreenshot()
+    const result = await analyzeWithRetry()
+    if (!result) {
+      console.log("skipping turn — could not get a valid response")
+      await clickControl("Play")
+      await sleep(1000)
+      continue
+    }
+
+    lastResult = result
     console.log("result:", JSON.stringify(lastResult, null, 2))
 
     // execute action:
     const action = actions[lastResult.action]
-    if (action) {
-      // resume game and wait
-      // for action to complete:
+    if (!action) {
+      console.log(`unknown action "${lastResult.action}", skipping turn`)
       await clickControl("Play")
-      await sleep(250)
-      action()
-      await sleep(3000)
-    } else {
-      throw new Error("failed to call action")
+      await sleep(1000)
+      continue
     }
+
+    // resume game and execute action:
+    await clickControl("Play")
+    await sleep(250)
+    await action()
+    await sleep(3000)
   }
 
   // save state and goals so next run continues from here:
@@ -212,9 +223,23 @@ function lastScreenshot() {
     : null
 }
 
-async function analyzeScreenshot() {
+const MAX_RETRIES = 5
+
+async function analyzeWithRetry() {
   const filePath = lastScreenshot()
-  return await provider.analyzeScreenshot(filePath)
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await provider.analyzeScreenshot(filePath)
+    } catch (err) {
+      console.error(`attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`)
+      if (attempt < MAX_RETRIES) {
+        const delay = 1000 * Math.pow(2, attempt - 1)
+        console.log(`retrying in ${delay / 1000}s...`)
+        await sleep(delay)
+      }
+    }
+  }
+  return null
 }
 
 function clearScreenshots() {

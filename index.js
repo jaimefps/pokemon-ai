@@ -1,14 +1,18 @@
-const secrets = require("./local/secrets")
+const config = require("./local/secrets")
 const puppeteer = require("puppeteer")
-const OpenAI = require("openai")
 const path = require("path")
 const fs = require("fs")
+const { spawn } = require("child_process")
+const http = require("http")
+
+const Provider = require(`./providers/${config.PROVIDER}`)
+const provider = new Provider(config)
 
 const SCREEN_CAP_LIMIT = 10
 const SCREEN_DIR = path.join(__dirname, "./screenshots")
-const EMULATOR_URL = "http://127.0.0.1:8080/"
-const ASSISTANT_ID = secrets.ASSISTANT_ID
-const GPT_KEY = secrets.GPT_KEY
+const EMULATOR_PORT = 8080
+const EMULATOR_URL = `http://127.0.0.1:${EMULATOR_PORT}/`
+const EMULATOR_DIR = path.join(__dirname, "..", "EmulatorJS")
 
 // Increase max cycles for long running games.
 // 100 is just to get a taste of how it works.
@@ -16,14 +20,15 @@ const MAX_CYCLES = 100
 
 // globals:
 let cycles = 0
-let openai
 let browser
 let page
+let serverProcess
 
 main()
 
 async function main() {
   try {
+    await startServer()
     await initAnalyzer()
     await initEmulator()
     await playGame()
@@ -32,11 +37,52 @@ async function main() {
   } finally {
     if (browser) await browser.close()
     console.log("Browser closed.")
+    stopServer()
+  }
+}
+
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const bin = path.join(__dirname, "node_modules", ".bin", "http-server")
+    serverProcess = spawn(bin, [EMULATOR_DIR, "-p", String(EMULATOR_PORT)], {
+      stdio: "ignore",
+    })
+
+    serverProcess.on("error", (err) => {
+      reject(new Error(`failed to start http-server: ${err.message}`))
+    })
+
+    // Poll until the server responds:
+    console.log("starting emulator server...")
+    const maxAttempts = 30
+    let attempts = 0
+    const interval = setInterval(() => {
+      attempts++
+      const req = http.get(EMULATOR_URL, () => {
+        clearInterval(interval)
+        console.log(`emulator server running at ${EMULATOR_URL}`)
+        resolve()
+      })
+      req.on("error", () => {
+        if (attempts >= maxAttempts) {
+          clearInterval(interval)
+          reject(new Error("emulator server failed to start"))
+        }
+      })
+      req.end()
+    }, 200)
+  })
+}
+
+function stopServer() {
+  if (serverProcess) {
+    serverProcess.kill()
+    console.log("emulator server stopped.")
   }
 }
 
 async function initAnalyzer() {
-  openai = new OpenAI({ apiKey: GPT_KEY })
+  await provider.init()
 }
 
 async function initEmulator() {
@@ -54,19 +100,32 @@ async function initEmulator() {
   await fileInput.uploadFile(romPath)
   console.log(`uploaded "${romPath}"`)
 
-  // wait for emulator
-  // to load the game rom:
-  await sleep(5000)
+  // wait for emulator to load the game rom:
+  console.log("waiting for emulator to initialize...")
+  await page.waitForFunction(
+    () => window.EJS_emulator && window.EJS_emulator.gameManager,
+    { timeout: 30000 },
+  )
+  console.log("emulator ready.")
 
-  // todo: automate rom.state upload.
-  // manually upload rom.state file.
-  console.log("load rom.state manually!")
-  await sleep(5000)
-
-  for (let i = 0; i < 5; i++) {
-    console.log(`GPT will start in ${5 - i}s`)
-    await sleep(1000)
+  // load save state if available:
+  const statePath = path.join(__dirname, "local", "rom.state")
+  if (fs.existsSync(statePath)) {
+    const stateBase64 = fs.readFileSync(statePath).toString("base64")
+    await page.evaluate((b64) => {
+      const binary = atob(b64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      window.EJS_emulator.gameManager.loadState(bytes)
+    }, stateBase64)
+    console.log("loaded save state from rom.state")
+  } else {
+    console.log("no rom.state found, starting from scratch.")
   }
+
+  await sleep(2000)
 }
 
 async function playGame() {
@@ -76,6 +135,8 @@ async function playGame() {
     console.log(`created screenshots directory: ${SCREEN_DIR}`)
   }
 
+  let lastResult = null
+
   while (cycles < MAX_CYCLES) {
     cycles += 1
     console.log(`--------- action #${cycles} ---------`)
@@ -83,28 +144,71 @@ async function playGame() {
     // capture screenshot:
     await clickControl("Pause")
     const screenPath = path.join(SCREEN_DIR, `${Date.now()}.png`)
-    await page.screenshot({ path: screenPath })
+    const canvas = await page.$("canvas")
+    await canvas.screenshot({ path: screenPath })
     clearScreenshots()
 
     // analyze screenshot:
-    const result = await analyzeScreenshot()
-    console.log("result:", JSON.stringify(result, null, 2))
+    const result = await analyzeWithRetry()
+    if (!result) {
+      console.log("skipping turn — could not get a valid response")
+      await clickControl("Play")
+      await sleep(1000)
+      continue
+    }
+
+    lastResult = result
+    console.log("result:", JSON.stringify(lastResult, null, 2))
 
     // execute action:
-    const action = actions[result.action]
-    if (action) {
-      // resume game and wait
-      // for action to complete:
+    const action = actions[lastResult.action]
+    if (!action) {
+      console.log(`unknown action "${lastResult.action}", skipping turn`)
       await clickControl("Play")
-      await sleep(200)
-      action()
-      await sleep(3000)
-    } else {
-      throw new Error("failed to call action")
+      await sleep(1000)
+      continue
     }
+
+    // resume game and execute action:
+    await clickControl("Play")
+    await sleep(250)
+    await action()
+    await sleep(3000)
   }
 
+  // save state and goals so next run continues from here:
+  await saveState()
+  saveGoals(lastResult)
   console.log(`reached MAX_CYCLES: ${MAX_CYCLES}`)
+}
+
+async function saveState() {
+  const statePath = path.join(__dirname, "local", "rom.state")
+  const stateBase64 = await page.evaluate(() => {
+    const state = window.EJS_emulator.gameManager.getState()
+    let binary = ""
+    for (let i = 0; i < state.length; i++) {
+      binary += String.fromCharCode(state[i])
+    }
+    return btoa(binary)
+  })
+  fs.writeFileSync(statePath, Buffer.from(stateBase64, "base64"))
+  console.log("saved state to rom.state")
+}
+
+function saveGoals(result) {
+  if (!result) return
+  const goalsPath = path.join(__dirname, "local", "goals.txt")
+  const lines = [
+    `Session ended: ${new Date().toISOString()}`,
+    `Cycle: ${cycles}`,
+    `Last action: ${result.action}`,
+    `Description: ${result.description}`,
+    `Short goal: ${result.short_goal}`,
+    `Long goal: ${result.long_goal}`,
+  ]
+  fs.writeFileSync(goalsPath, lines.join("\n") + "\n")
+  console.log("saved goals to goals.txt")
 }
 
 function lastScreenshot() {
@@ -119,50 +223,23 @@ function lastScreenshot() {
     : null
 }
 
-async function analyzeScreenshot() {
+const MAX_RETRIES = 5
+
+async function analyzeWithRetry() {
   const filePath = lastScreenshot()
-  const file = await openai.files.create({
-    file: fs.createReadStream(filePath),
-    purpose: "vision",
-  })
-  console.log("uploaded file:", file.filename)
-
-  await openai.beta.threads.messages.create(secrets.THREAD_ID, {
-    role: "user",
-    content: [
-      {
-        type: "image_file",
-        image_file: {
-          file_id: file.id,
-          detail: "auto",
-        },
-      },
-    ],
-  })
-
-  console.log("analyzing screenshot...")
-  const run = await openai.beta.threads.runs.createAndPoll(secrets.THREAD_ID, {
-    assistant_id: ASSISTANT_ID,
-  })
-
-  let result
-
-  if (run.status === "completed") {
-    const messages = await openai.beta.threads.messages.list(run.thread_id, {
-      order: "desc",
-      limit: 1,
-    })
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const raw = messages.data[0].content[0].text.value
-      result = JSON.parse(raw)
+      return await provider.analyzeScreenshot(filePath)
     } catch (err) {
-      throw new Error(`failed to parse response: ${err}`)
+      console.error(`attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}`)
+      if (attempt < MAX_RETRIES) {
+        const delay = 1000 * Math.pow(2, attempt - 1)
+        console.log(`retrying in ${delay / 1000}s...`)
+        await sleep(delay)
+      }
     }
-  } else {
-    throw new Error(`analysis failed with status: ${run.status}`)
   }
-
-  return result
+  return null
 }
 
 function clearScreenshots() {
@@ -222,7 +299,7 @@ async function clickCanvas() {
     if (canvasBox) {
       await page.mouse.click(
         canvasBox.x + canvasBox.width / 2,
-        canvasBox.y + canvasBox.height / 2
+        canvasBox.y + canvasBox.height / 2,
       )
     } else {
       throw new Error("unable to retrieve canvas bounding box")

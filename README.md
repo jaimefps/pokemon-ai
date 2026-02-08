@@ -23,16 +23,18 @@ The AI is constrained to respond with exactly this JSON structure:
 
 ```json
 {
-  "description":  "what the AI sees on screen",
-  "ascii_grid":   "a 10x9 ASCII translation of the game tiles",
-  "what_changed": "what changed since the last screenshot",
-  "short_goal":   "the AI's immediate objective",
-  "long_goal":    "the AI's broader objective",
-  "action":       "one of: a, b, up, down, left, right, start"
+  "what_changed":  "what changed since the last screenshot",
+  "screen_type":   "overworld, battle, menu, dialogue, or cutscene",
+  "description":   "what the AI sees on screen",
+  "surroundings":  "environment and adjacent tiles (overworld only)",
+  "short_goal":    "the AI's immediate objective",
+  "medium_goal":   "the AI's near-future objective",
+  "long_goal":     "the AI's broader objective",
+  "action":        "one of: a, b, up, down, left, right, start"
 }
 ```
 
-The `short_goal` and `long_goal` fields are an experiment in "explicit awareness" — by forcing the model to articulate its goals each turn, it creates a form of reinforcement that helps it stay on task over time.
+The goal fields (`short_goal`, `medium_goal`, `long_goal`) are an experiment in "explicit awareness" — by forcing the model to articulate its goals at multiple horizons each turn, it creates a form of reinforcement that helps it stay on task over time.
 
 ### provider architecture
 
@@ -45,7 +47,7 @@ pkmn/
 │   ├── anthropic.js         (Anthropic Messages API)
 │   └── openai.js            (OpenAI Chat Completions API)
 ├── prompts/
-│   └── v6.txt               (system prompt)
+│   └── v9.txt               (system prompt)
 └── local/
     ├── secrets.js           (provider config + API key)
     ├── rom.gb               (game ROM)
@@ -53,7 +55,7 @@ pkmn/
     └── goals.txt            (last session's goals, auto-managed)
 ```
 
-All providers extend a base class and implement the same interface: `init()` and `analyzeScreenshot(filePath)`. The main game loop doesn't know or care which provider is active. Each provider maintains a rolling conversation history (trimmed at 20 exchanges) so the AI has context from previous turns.
+All providers extend a base class and implement the same interface: `init()` and `analyzeScreenshot(filePath)`. The main game loop doesn't know or care which provider is active. The base class provides shared reliability logic: a 30-second API timeout (to prevent hanging on unresponsive calls), conversation history trimming (capped at 8 exchanges), and image stripping (only the 3 most recent screenshots are sent as images — older turns keep the AI's text response but replace the screenshot with a placeholder to reduce payload size). The game loop adds retry logic with exponential backoff (up to 5 attempts) on top of this.
 
 ### session persistence
 
@@ -64,11 +66,11 @@ The app automatically saves and restores progress between runs:
 
 ### system prompt
 
-The system prompt (`prompts/v6.txt`) instructs the AI to play the opening sequence of Pokemon Red. It includes:
+The system prompt (`prompts/v9.txt`) instructs the AI to play through Pokemon Red and become Champion. It deliberately avoids telling the AI *how* to play — no walkthrough, no team recommendations, no step-by-step sequences. Instead it focuses on UI literacy:
 - The constrained JSON response format
 - Valid actions and what each button does
-- Game state recognition rules (text boxes, menus, overworld)
-- An ASCII grid dictionary for translating screenshots into structured tile maps
+- Game state recognition rules (battle screens, evolution, dialogue, menus, overworld)
+- Natural language surroundings analysis for spatial reasoning in the overworld
 - Stuck detection and recovery strategies
 
 See the `prompts/` directory for the evolution of prompts across versions.
@@ -150,5 +152,4 @@ This single command starts the emulator server, launches a browser, uploads the 
 ## fine-tuning options
 
 1. `jsonl` dataset with base64 encoded screenshots.
-2. `jsonl` dataset with ASCII translations of the map: each type of tile has its corresponding label.
-3. OpenAI Gym Retro training: https://openai.com/index/gym-retro/
+2. OpenAI Gym Retro training: https://openai.com/index/gym-retro/

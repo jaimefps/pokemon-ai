@@ -9,7 +9,7 @@ class AIProvider {
   constructor(config) {
     this.config = config
     this.systemPrompt = fs.readFileSync(
-      path.join(__dirname, "..", "prompts", "v8.txt"),
+      path.join(__dirname, "..", "prompts", "v9.txt"),
       "utf-8"
     )
 

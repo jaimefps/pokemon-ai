@@ -6,16 +6,72 @@ An experiment with AI vision analysis capabilities. An AI model receives screens
 
 Supports multiple AI providers (Google Gemini, Anthropic Claude, OpenAI) via a plugin architecture — switch between them by changing a single config value.
 
+## how to run
+
+### 1. prepare local data
+
+Create a `local/` directory inside this folder and add two files:
+
+- **`local/rom.gb`** — a legally obtained Pokemon Red ROM file.
+- **`local/secrets.js`** — your provider config. Pick **one** of the three providers below:
+
+**Google Gemini** *(recommended — top-ranked vision model):*
+```js
+module.exports = {
+  PROVIDER: "gemini",
+  apiKey: "YOUR_GOOGLE_AI_KEY",
+  model: "gemini-3-pro-preview", // optional, this is the default
+}
+```
+Get a key at [Google AI Studio](https://aistudio.google.com/apikey).
+
+**Anthropic (Claude):**
+```js
+module.exports = {
+  PROVIDER: "anthropic",
+  apiKey: "YOUR_ANTHROPIC_API_KEY",
+  model: "claude-sonnet-4-5-20250929", // optional, this is the default
+}
+```
+Get a key at the [Anthropic Console](https://console.anthropic.com/).
+
+**OpenAI:**
+```js
+module.exports = {
+  PROVIDER: "openai",
+  apiKey: "YOUR_OPENAI_ACCESS_KEY",
+  model: "gpt-5.2", // optional, this is the default
+}
+```
+Get a key at the [OpenAI Platform](https://platform.openai.com/api-keys).
+
+### 2. start
+
+```
+npm install
+npm start
+```
+
+That's it. On first run, the app automatically:
+1. Clones [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) (into `EmulatorJS/`, gitignored)
+2. Installs EmulatorJS dependencies
+3. Starts the emulator server
+4. Launches a browser, uploads the ROM, and begins playing
+
+On subsequent runs it skips steps 1-2 and goes straight to playing. If a save state exists from a previous session, it's loaded automatically.
+
 ## how it works
 
 ### game loop
 
 Each cycle the app:
-1. Pauses the emulator and captures a screenshot
+1. Pauses the emulator and captures a screenshot of the game canvas
 2. Sends the screenshot to the AI provider
 3. The AI responds with a JSON object describing what it sees and what action to take
 4. The app resumes the emulator and executes the action as a keyboard press
 5. Repeats for `MAX_CYCLES` (default 100)
+
+If the AI returns an invalid response, the app retries with exponential backoff (up to 5 attempts) before skipping the turn and continuing.
 
 ### response format
 
@@ -49,6 +105,7 @@ pkmn/
 │   └── openai.js            (OpenAI Chat Completions API)
 ├── prompts/
 │   └── v9.txt               (system prompt)
+├── EmulatorJS/              (auto-cloned, gitignored)
 └── local/
     ├── secrets.js           (provider config + API key)
     ├── rom.gb               (game ROM)
@@ -75,80 +132,6 @@ The system prompt (`prompts/v9.txt`) instructs the AI to play through Pokemon Re
 - Stuck detection and recovery strategies
 
 See the `prompts/` directory for the evolution of prompts across versions.
-
-## how to run locally
-
-Clone this repo onto your machine, then...
-
-### 1. prepare local data
-
-Create a directory named `local` inside the `pkmn/` folder (i.e. `pkmn/local/`). This directory is in `.gitignore` to avoid committing secrets or ROM files you may not have the right to distribute.
-
-Add the following files to `pkmn/local/`:
-
-- **`rom.gb`** — a legally obtained Pokemon Red ROM file.
-- **`rom.state`** _(optional)_ — a save-state file if you want to skip ahead in the game. If present, it is loaded automatically on startup.
-- **`secrets.js`** — your provider config. Pick **one** of the three providers below and fill in your keys:
-
-**Google Gemini** *(recommended — top-ranked vision model):*
-1. Go to [Google AI Studio](https://aistudio.google.com/apikey) and create an API key
-2. Configure `secrets.js`:
-
-```js
-module.exports = {
-  PROVIDER: "gemini",
-  apiKey: "YOUR_GOOGLE_AI_KEY",
-  model: "gemini-3-pro-preview", // optional, this is the default
-}
-```
-
-**Anthropic (Claude):**
-1. Go to the [Anthropic Console](https://console.anthropic.com/) and create an API key
-2. Configure `secrets.js`:
-
-```js
-module.exports = {
-  PROVIDER: "anthropic",
-  apiKey: "YOUR_ANTHROPIC_API_KEY",
-  model: "claude-sonnet-4-5-20250929", // optional, this is the default
-}
-```
-
-**OpenAI:**
-1. Go to the [OpenAI Platform](https://platform.openai.com/api-keys) and create an API key
-2. Configure `secrets.js`:
-
-```js
-module.exports = {
-  PROVIDER: "openai",
-  apiKey: "YOUR_OPENAI_ACCESS_KEY",
-  model: "gpt-5.2", // optional, this is the default
-}
-```
-
-### 2. prepare emulator
-
-Clone the [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) project into the repo root (as a sibling to `pkmn/`). Install its dependencies:
-
-```
-cd EmulatorJS
-npm install
-cd ..
-```
-
-You do NOT need to start the emulator manually — the app handles that automatically.
-
-### 3. run
-
-From the `pkmn/` directory:
-
-```
-cd pkmn
-npm install
-npm start
-```
-
-This single command starts the emulator server, launches a browser, uploads the ROM, and begins playing. Everything shuts down cleanly when the app finishes or is interrupted.
 
 ## fine-tuning options
 

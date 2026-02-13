@@ -7,3 +7,4 @@ yarn-error.log*
 # ignore secrets, ROM, etc
 screenshots/
 local/
+EmulatorJS/

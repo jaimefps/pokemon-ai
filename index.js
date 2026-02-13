@@ -1,18 +1,18 @@
-const config = require("./local/secrets")
 const puppeteer = require("puppeteer")
 const path = require("path")
 const fs = require("fs")
-const { spawn } = require("child_process")
+const { spawn, execSync } = require("child_process")
 const http = require("http")
-
-const Provider = require(`./providers/${config.PROVIDER}`)
-const provider = new Provider(config)
 
 const SCREEN_CAP_LIMIT = 10
 const SCREEN_DIR = path.join(__dirname, "./screenshots")
 const EMULATOR_PORT = 8080
 const EMULATOR_URL = `http://127.0.0.1:${EMULATOR_PORT}/`
-const EMULATOR_DIR = path.join(__dirname, "..", "EmulatorJS")
+const EMULATOR_DIR = path.join(__dirname, "EmulatorJS")
+const EMULATOR_REPO = "https://github.com/EmulatorJS/EmulatorJS.git"
+const LOCAL_DIR = path.join(__dirname, "local")
+const ROM_PATH = path.join(LOCAL_DIR, "rom.gb")
+const SECRETS_PATH = path.join(LOCAL_DIR, "secrets.js")
 
 // Increase max cycles for long running games.
 // 100 is just to get a taste of how it works.
@@ -23,11 +23,16 @@ let cycles = 0
 let browser
 let page
 let serverProcess
+let provider
 
 main()
 
 async function main() {
   try {
+    await setup()
+    const config = require("./local/secrets")
+    const Provider = require(`./providers/${config.PROVIDER}`)
+    provider = new Provider(config)
     await startServer()
     await initAnalyzer()
     await initEmulator()
@@ -38,6 +43,40 @@ async function main() {
     if (browser) await browser.close()
     console.log("Browser closed.")
     stopServer()
+  }
+}
+
+async function setup() {
+  // clone EmulatorJS if missing:
+  if (!fs.existsSync(EMULATOR_DIR)) {
+    console.log("EmulatorJS not found, cloning...")
+    execSync(`git clone ${EMULATOR_REPO} "${EMULATOR_DIR}"`, { stdio: "inherit" })
+    console.log("EmulatorJS cloned.")
+  }
+
+  // install EmulatorJS dependencies if missing:
+  if (!fs.existsSync(path.join(EMULATOR_DIR, "node_modules"))) {
+    console.log("installing EmulatorJS dependencies...")
+    execSync("npm install", { cwd: EMULATOR_DIR, stdio: "inherit" })
+    console.log("EmulatorJS dependencies installed.")
+  }
+
+  // ensure local/ directory exists:
+  if (!fs.existsSync(LOCAL_DIR)) {
+    fs.mkdirSync(LOCAL_DIR)
+  }
+
+  // check for required local files:
+  if (!fs.existsSync(SECRETS_PATH)) {
+    console.error(`\nmissing: ${SECRETS_PATH}`)
+    console.error("create pkmn/local/secrets.js with your provider config. see README for examples.\n")
+    process.exit(1)
+  }
+
+  if (!fs.existsSync(ROM_PATH)) {
+    console.error(`\nmissing: ${ROM_PATH}`)
+    console.error("place a legally obtained Pokemon Red ROM file at pkmn/local/rom.gb\n")
+    process.exit(1)
   }
 }
 
@@ -95,10 +134,9 @@ async function initEmulator() {
   console.log("uploading rom...")
   const romUploadSelector = 'input[type="file"]'
   await page.waitForSelector(romUploadSelector)
-  const romPath = path.join(__dirname, "local", "rom.gb")
   const fileInput = await page.$(romUploadSelector)
-  await fileInput.uploadFile(romPath)
-  console.log(`uploaded "${romPath}"`)
+  await fileInput.uploadFile(ROM_PATH)
+  console.log(`uploaded "${ROM_PATH}"`)
 
   // wait for emulator to load the game rom:
   console.log("waiting for emulator to initialize...")
@@ -109,7 +147,7 @@ async function initEmulator() {
   console.log("emulator ready.")
 
   // load save state if available:
-  const statePath = path.join(__dirname, "local", "rom.state")
+  const statePath = path.join(LOCAL_DIR, "rom.state")
   if (fs.existsSync(statePath)) {
     const stateBase64 = fs.readFileSync(statePath).toString("base64")
     await page.evaluate((b64) => {
